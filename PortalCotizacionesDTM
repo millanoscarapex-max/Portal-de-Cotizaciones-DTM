@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Portal de Cotizaciones · DISTRIBUCION TOPOGRAFICA DE MEXICO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      :root { --brand: #fab12f; }
+      body { background: #f1f5f9; }
+      .brand-chip { background: var(--brand); color:#111827; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useMemo, useState, useEffect } = React;
+
+      const BRAND = {
+        companyName: "DISTRIBUCION TOPOGRAFICA DE MEXICO",
+        rfc: "DTM1012043U7",
+        address: "Industrial 1 #2 Int. A, Col. DESARROLLO URBANO LA PRIMAVERA, Culiacán, Sinaloa, CP 80300",
+        phone: "",
+        email: "",
+        notesFooter: "Precios en MXN + IVA 16%. Cotización sujeta a disponibilidad y cambios sin previo aviso. Los tiempos de entrega son estimados. Garantía estándar de 12 meses contra defectos de fabricación, salvo mal uso. Esta cotización no constituye pedido ni factura. DISTRIBUCION TOPOGRAFICA DE MEXICO · RFC DTM1012043U7 · Industrial 1 #2 Int. A, Col. DESARROLLO URBANO LA PRIMAVERA, Culiacán, Sinaloa, CP 80300",
+        logoHTML: '<div style="display:flex;align-items:center;gap:12px"><div style="width:120px;height:34px;background:#fab12f;border-radius:6px;color:#111827;display:flex;align-items:center;justify-content:center;font-weight:800;font-family:system-ui,Inter,Arial">DTM</div><div style="font-weight:700;color:#0f172a">TOPOGRAFÍA</div></div>'
+      };
+      const IVA_PCT = 0.16;
+
+      const distributors = [{
+        id: "dist-001",
+        name: "Distribuidor DTM",
+        currency: "MXN",
+        thresholds: { maxDiscountPct: 20, minMarginPct: 15 },
+        pricebook: { id: "pb-dtm", items: [
+          { productId: "SKU-Z95", price: 425000, discountDefault: 5 },
+          { productId: "SKU-ZT20", price: 145000, discountDefault: 3 },
+          { productId: "SKU-GNSS1", price: 298000, discountDefault: 4 },
+          { productId: "SKU-XPAD", price: 28000, discountDefault: 0 },
+          { productId: "SKU-CAPA", price: 12000, discountDefault: 0 },
+        ]}
+      }];
+
+      const products = [
+        { id: "SKU-Z95", sku: "Z95", name: "Estación Total Robotizada GeoMax Zoom95", unit: "pz", list_price_mxn: 450000, cost_mxn: 340000 },
+        { id: "SKU-ZT20", sku: "ZT20", name: "Estación Total Manual 2'", unit: "pz", list_price_mxn: 160000, cost_mxn: 112000 },
+        { id: "SKU-GNSS1", sku: "GNSS1", name: "Receptor GNSS RTK", unit: "pz", list_price_mxn: 320000, cost_mxn: 230000 },
+        { id: "SKU-XPAD", sku: "XPAD", name: "Licencia X-PAD Ultimate (Android)", unit: "lic", list_price_mxn: 30000, cost_mxn: 2000 },
+        { id: "SKU-CAPA", sku: "CAPA", name: "Capacitación Presencial (8h)", unit: "serv", list_price_mxn: 12000, cost_mxn: 3000 },
+      ];
+
+      const sampleCustomers = [
+        { id: "c1", name: "Constructora Andamios del Pacífico, SA de CV", rfc: "CAP010101AB1" },
+        { id: "c2", name: "Topógrafos del Bajío", rfc: "TDB020202XY9" },
+        { id: "c3", name: "Obras y Servicios del Noroeste", rfc: "OSN030303ZZ3" },
+      ];
+
+      const money = (n) => (n ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 });
+      const numberMX = (n) => new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n ?? 0);
+      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+      const getProduct = (id) => products.find(p => p.id === id);
+      const findPBPrice = (d, productId) => { const i = d.pricebook.items.find(i=>i.productId===productId); return i ? { price: i.price, discountDefault: i.discountDefault } : { price: 0, discountDefault: 0 }; };
+      const formatFolio = (n) => `COT${String(n).padStart(4, "0")}`;
+
+      const Section = ({ title, children, right }) => (
+        <section className="bg-white rounded-2xl shadow-sm p-5 border border-slate-200">
+          <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-semibold">{title}</h2>{right}</div>
+          {children}
+        </section>
+      );
+
+      function buildBrandedQuoteHTML({ folio, customerName, distributor, items, totals, shipping, insurance }) {
+        const rows = items.map((row) => {
+          const p = getProduct(row.productId); const { price } = findPBPrice(distributor, row.productId);
+          const unit = price || p?.list_price_mxn || 0; const disc = clamp(row.discountPct || 0, 0, 100); const qty = Math.max(1, row.qty || 1);
+          const netUnit = unit * (1 - disc / 100); const importe = netUnit * qty;
+          return `<tr><td>${p?.sku}</td><td>${p?.name}</td><td class="right">${numberMX(unit)}</td><td class="right">${disc}%</td><td class="right">${qty}</td><td class="right">${numberMX(netUnit)}</td><td class="right">${numberMX(importe)}</td></tr>`;
+        }).join("");
+        const today = new Date();
+        return `<!doctype html><html><head><meta charset="utf-8"/><title>${folio} - Cotización</title>
+          <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;padding:28px;color:#0f172a}
+          header{display:flex;gap:16px;align-items:center;border-bottom:2px solid #e2e8f0;padding-bottom:12px;margin-bottom:12px}
+          .brand-data{font-size:12px;color:#334155} h1{font-size:20px;margin:8px 0 0} table{width:100%;border-collapse:collapse;margin-top:12px}
+          th,td{border-bottom:1px solid #e5e7eb;padding:6px} th{text-align:left;background:#f8fafc} .right{text-align:right}
+          footer{border-top:1px solid #e2e8f0;margin-top:16px;padding-top:12px;font-size:11px;color:#475569}
+          .totals{max-width:420px;margin-left:auto} .totals .row{display:flex;justify-content:space-between;padding:4px 0}
+          .chip{display:inline-block;padding:3px 8px;border-radius:999px;background:#fab12f;color:#111827;font-weight:600;font-size:12px}</style></head><body>
+          <header><div>${BRAND.logoHTML}</div><div><div class="brand-data"><span class="chip">${BRAND.companyName}</span></div>
+          <div class="brand-data">RFC: ${BRAND.rfc}</div><div class="brand-data">${BRAND.address}</div></div></header>
+          <section><h1>Cotización ${folio}</h1>
+          <div style="font-size:13px;color:#475569">Fecha: ${today.toLocaleDateString("es-MX")}</div>
+          <div style="margin-top:8px;font-size:13px;color:#0f172a">Cliente: <b>${customerName}</b></div>
+          <div style="font-size:13px;color:#0f172a">Distribuidor: <b>${distributor.name}</b> · Moneda: ${distributor.currency}</div>
+          <table><thead><tr><th>SKU</th><th>Producto</th><th class="right">Lista</th><th class="right">Desc%</th><th class="right">Cant.</th><th class="right">Neto</th><th class="right">Importe</th></tr></thead><tbody>${rows}</tbody></table>
+          <div class="totals"><div class="row"><span>Productos</span><span>${numberMX(totals.productsTotal)}</span></div>
+          <div class="row"><span>Flete</span><span>${numberMX(shipping)}</span></div>
+          <div class="row"><span>Seguro</span><span>${numberMX(insurance)}</span></div>
+          <div class="row"><span>Base</span><span>${numberMX(totals.preTax)}</span></div>
+          <div class="row"><span>IVA (16%)</span><span>${numberMX(totals.tax)}</span></div>
+          <div class="row" style="font-weight:600"><span>Total</span><span>${numberMX(totals.total)}</span></div></div></section>
+          <footer>${BRAND.notesFooter}</footer></body></html>`;
+      }
+      function printHTML(html){const f=document.createElement('iframe');Object.assign(f.style,{position:'fixed',right:'0',bottom:'0',width:'0',height:'0',border:'0'});document.body.appendChild(f);f.onload=()=>{try{f.contentWindow?.focus();f.contentWindow?.print();}finally{setTimeout(()=>document.body.removeChild(f),500);}};f.srcdoc=html;}
+
+      const buildPublicUrl = (id) => `${window.location.href.split('#')[0]}#public=${encodeURIComponent(id)}`;
+      function savePublicQuote(quote){ const id = `${quote.id}-${Date.now()}`; try{ localStorage.setItem(`public:${id}`, JSON.stringify({ quote })); }catch(_){} return { id, url: buildPublicUrl(id) }; }
+      function loadPublicQuote(id){ try{ const raw = localStorage.getItem(`public:${id}`); if(!raw) return {error:'No existe'}; return {data: JSON.parse(raw)}; }catch(e){ return {error:'Error de lectura'}; } }
+
+      const LineItemRow = ({ row, onChange, onRemove, distributor }) => {
+        const p = getProduct(row.productId); const pb = findPBPrice(distributor, row.productId);
+        const unit = pb.price || p?.list_price_mxn || 0; const disc = clamp(row.discountPct ?? pb.discountDefault ?? 0, 0, 100);
+        const qty = Math.max(1, row.qty ?? 1); const netUnit = unit * (1 - disc/100); const lineTotal = netUnit * qty;
+        return (
+          <tr className="border-b last:border-0">
+            <td className="p-2"><div className="text-sm font-medium">{p?.name}</div><div className="text-xs text-slate-500">SKU: {p?.sku}</div></td>
+            <td className="p-2 text-right"><div className="text-sm">{money(unit)}</div><div className="text-xs text-slate-500">Lista</div></td>
+            <td className="p-2 text-right">
+              <input type="number" min={0} max={100} value={disc} onChange={(e)=>onChange({ ...row, discountPct: clamp(Number(e.target.value),0,100) })} className="w-20 text-right border border-slate-300 rounded-md px-2 py-1" />
+              <div className="text-xs text-slate-500">%</div>
+            </td>
+            <td className="p-2 text-right"><input type="number" min={1} value={qty} onChange={(e)=>onChange({ ...row, qty: Math.max(1, Number(e.target.value)) })} className="w-20 text-right border border-slate-300 rounded-md px-2 py-1" /></td>
+            <td className="p-2 text-right"><div className="text-sm font-medium">{money(netUnit)}</div><div className="text-xs text-slate-500">Neto</div></td>
+            <td className="p-2 text-right"><div className="text-sm font-semibold">{money(lineTotal)}</div></td>
+            <td className="p-2 text-right"><button onClick={onRemove} className="text-slate-500 hover:text-red-600 text-sm">Quitar</button></td>
+          </tr>
+        );
+      };
+
+      function PublicQuoteView({ shareId }){
+        const [state, setState] = useState({ loading: true, error: "", payload: null });
+        useEffect(()=>{ const res=loadPublicQuote(shareId); if(res.error) setState({loading:false,error:res.error,payload:null}); else setState({loading:false,error:"",payload:res.data}); },[shareId]);
+        if(state.loading) return <div className="p-6">Cargando…</div>;
+        if(state.error) return <div className="p-6 text-red-600">No se puede mostrar la cotización pública ({state.error}).</div>;
+        const q = state.payload.quote; const distributor = distributors[0]; const customer = sampleCustomers.find(c=>c.id===q.customerId);
+        const handleDownloadPDF = ()=>{ const html = buildBrandedQuoteHTML({ folio:q.id, customerName:customer?.name||"Cliente", distributor, items:q.items, totals:q.totals, shipping:q.shipping, insurance:q.insurance }); printHTML(html); };
+        return (<div className="min-h-screen bg-white p-6"><div className="max-w-3xl mx-auto">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3"><div className="p-2 rounded-lg brand-chip"><span className="font-semibold">DTM</span></div>
+              <div><h1 className="text-2xl font-bold">Cotización {q.id}</h1><div className="text-slate-600 text-sm">Moneda: {distributor.currency}</div></div></div>
+            <div className="flex gap-2 print:hidden"><button onClick={()=>window.print()} className="px-3 py-2 rounded-xl bg-slate-200 text-slate-900 text-sm">Imprimir</button>
+              <button onClick={handleDownloadPDF} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm">Descargar PDF</button></div></div>
+          <Section title="Datos"><div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div><div className="text-slate-500">Cliente</div><div className="font-medium">{customer?.name}</div></div>
+            <div><div className="text-slate-500">Distribuidor</div><div className="font-medium">{distributor.name}</div></div>
+          </div></Section>
+          <Section title="Ítems"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-left border-b"><th className="p-2">SKU</th><th className="p-2">Producto</th><th className="p-2 text-right">Desc.%</th><th className="p-2 text-right">Cant.</th><th className="p-2 text-right">Importe</th></tr></thead>
+            <tbody>{q.items.map((row, idx)=>{ const p=getProduct(row.productId); const pb=findPBPrice(distributors[0], row.productId); const unit=pb.price||p?.list_price_mxn||0; const disc=clamp(row.discountPct||0,0,100); const qty=Math.max(1,row.qty||1); const netUnit=unit*(1-disc/100); const importe=netUnit*qty; return (<tr key={idx} className="border-b"><td className="p-2">{p?.sku}</td><td className="p-2">{p?.name}</td><td className="p-2 text-right">{disc}%</td><td className="p-2 text-right">{qty}</td><td className="p-2 text-right">{money(importe)}</td></tr>); })}</tbody>
+          </table></div></Section>
+          <Section title="Totales"><div className="flex flex-col gap-2 text-sm">
+            <div className="flex justify-between"><span>Productos</span><span>{money(q.totals.productsTotal)}</span></div>
+            <div className="flex justify-between"><span>Flete</span><span>{money(q.shipping)}</span></div>
+            <div className="flex justify-between"><span>Seguro</span><span>{money(q.insurance)}</span></div>
+            <div className="flex justify-between"><span>Base gravable</span><span>{money(q.totals.preTax)}</span></div>
+            <div className="flex justify-between"><span>IVA (16%)</span><span>{money(q.totals.tax)}</span></div>
+            <div className="flex justify-between text-base font-semibold"><span>Total</span><span>{money(q.totals.total)}</span></div>
+          </div></Section>
+          <div className="text-xs text-slate-500 mt-6">{BRAND.notesFooter}</div>
+        </div></div>);
+      }
+
+      function NewQuoteForm({ distributor, onSave, nextFolio, onPrint, onDownloadCSV }){
+        const [customerId, setCustomerId] = useState(sampleCustomers[0]?.id || "");
+        const [shipping, setShipping] = useState(0);
+        const [insurance, setInsurance] = useState(0);
+        const [items, setItems] = useState([{ productId: "SKU-Z95", qty: 1, discountPct: findPBPrice(distributors[0], "SKU-Z95").discountDefault }]);
+        const [addProduct, setAddProduct] = useState(products[0]?.id || "");
+
+        const pricing = useMemo(()=>{
+          let subtotal = 0, flagOverDiscount = false, cogSum = 0;
+          for(const row of items){
+            const p = getProduct(row.productId); const { price } = findPBPrice(distributors[0], row.productId);
+            const unit = price || p?.list_price_mxn || 0; const disc = clamp(row.discountPct || 0, 0, 100); const qty = Math.max(1, row.qty || 1);
+            const netUnit = unit * (1 - disc/100); subtotal += netUnit * qty; cogSum += (p?.cost_mxn||0) * qty;
+            if (disc > 20) flagOverDiscount = true;
+          }
+          const productsTotal = Math.max(0, subtotal);
+          const preTax = Math.max(0, productsTotal + shipping + insurance);
+          const tax = preTax * IVA_PCT; const total = preTax + tax;
+          const margin = preTax > 0 ? ((preTax - cogSum) / preTax) * 100 : 0;
+          return { productsTotal, preTax, tax, total, margin, requiresApproval: flagOverDiscount };
+        },[items, shipping, insurance]);
+
+        const addItem = (productId) => { if (!productId) return; setItems(p => [...p, { productId, qty: 1, discountPct: findPBPrice(distributors[0], productId).discountDefault }]); };
+        const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
+        const customer = sampleCustomers.find(c => c.id === customerId);
+        const handleSave = (status="Borrador") => { const quote = { id: nextFolio, version: 1, status, distributorId: distributors[0].id, customerId, shipping, insurance, items, totals: pricing, createdAt: new Date().toISOString(), requiresApproval: pricing.requiresApproval }; onSave(quote); };
+
+        return (<div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+          <div className="xl:col-span-2 space-y-5">
+            <Section title={`Datos del cliente · Folio: ${nextFolio}`}
+              right={<span className="px-2 py-1 rounded-md text-xs font-medium brand-chip">DTM</span>}>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <label className="text-sm"><div className="text-slate-600 mb-1">Cliente final</div>
+                  <select value={customerId} onChange={(e)=>setCustomerId(e.target.value)} className="w-full border border-slate-300 rounded-md px-3 py-2">
+                    {sampleCustomers.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                  </select>
+                </label>
+              </div>
+            </Section>
+
+            <Section title="Ítems" right={<div className="flex items-center gap-2">
+              <select value={addProduct} onChange={(e)=>setAddProduct(e.target.value)} className="border border-slate-300 rounded-md px-2 py-1">
+                {products.map(p => (<option key={p.id} value={p.id}>{p.name}</option>))}
+              </select>
+              <button onClick={()=>addItem(addProduct)} className="px-3 py-2 rounded-xl text-sm text-slate-900" style={{background:'var(--brand)'}}>Agregar ítem</button>
+            </div>}>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-left border-b"><th className="p-2">Producto</th><th className="p-2 text-right">Precio lista</th><th className="p-2 text-right">Desc. %</th><th className="p-2 text-right">Cantidad</th><th className="p-2 text-right">Neto</th><th className="p-2 text-right">Importe</th><th className="p-2" /></tr></thead>
+                <tbody>{items.map((row, idx) => {
+                  const p = getProduct(row.productId); const { price } = findPBPrice(distributors[0], row.productId);
+                  const unit = price || p?.list_price_mxn || 0; const disc = clamp(row.discountPct || 0, 0, 100); const qty = Math.max(1, row.qty || 1);
+                  const netUnit = unit * (1 - disc/100); const importe = netUnit * qty;
+                  return (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td className="p-2"><div className="text-sm font-medium">{p?.name}</div><div className="text-xs text-slate-500">SKU: {p?.sku}</div></td>
+                      <td className="p-2 text-right"><div className="text-sm">{money(unit)}</div><div className="text-xs text-slate-500">Lista</div></td>
+                      <td className="p-2 text-right"><input type="number" min={0} max={100} value={row.discountPct} onChange={(e)=>setItems(prev=>prev.map((r,i)=> i===idx ? { ...r, discountPct: clamp(Number(e.target.value),0,100)} : r))} className="w-20 text-right border border-slate-300 rounded-md px-2 py-1" /><div className="text-xs text-slate-500">%</div></td>
+                      <td className="p-2 text-right"><input type="number" min={1} value={row.qty} onChange={(e)=>setItems(prev=>prev.map((r,i)=> i===idx ? { ...r, qty: Math.max(1, Number(e.target.value))} : r))} className="w-20 text-right border border-slate-300 rounded-md px-2 py-1" /></td>
+                      <td className="p-2 text-right"><div className="text-sm font-medium">{money(netUnit)}</div><div className="text-xs text-slate-500">Neto</div></td>
+                      <td className="p-2 text-right"><div className="text-sm font-semibold">{money(importe)}</div></td>
+                      <td className="p-2 text-right"><button onClick={()=>removeItem(idx)} className="text-slate-500 hover:text-red-600 text-sm">Quitar</button></td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table></div>
+            </Section>
+
+            <Section title="Extras"><div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <label className="text-sm"><div className="text-slate-600 mb-1">Flete</div><input type="number" value={shipping} onChange={(e)=>setShipping(Number(e.target.value))} className="w-full border border-slate-300 rounded-md px-3 py-2" /></label>
+              <label className="text-sm"><div className="text-slate-600 mb-1">Seguro</div><input type="number" value={insurance} onChange={(e)=>setInsurance(Number(e.target.value))} className="w-full border border-slate-300 rounded-md px-3 py-2" /></label>
+            </div></Section>
+          </div>
+
+          <div className="space-y-5">
+            <Section title="Resumen">
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex justify-between"><span>Productos</span><span>{money(pricing.productsTotal)}</span></div>
+                <div className="flex justify-between"><span>Flete</span><span>{money(shipping)}</span></div>
+                <div className="flex justify-between"><span>Seguro</span><span>{money(insurance)}</span></div>
+                <div className="flex justify-between"><span>Base gravable</span><span>{money(pricing.preTax)}</span></div>
+                <div className="flex justify-between"><span>IVA (16%)</span><span>{money(pricing.tax)}</span></div>
+                <div className="flex justify-between text-base font-semibold"><span>Total</span><span>{money(pricing.total)}</span></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                <button onClick={()=>handleSave("Borrador")} className="px-3 py-2 rounded-xl border border-slate-300">Guardar borrador</button>
+                <button onClick={()=>handleSave(pricing.requiresApproval ? "En revisión" : "Aprobada")} className="px-3 py-2 rounded-xl text-white" style={{background:'var(--brand)'}}>Enviar a aprobación</button>
+                <button onClick={()=>onPrint(nextFolio, (customer?.name||"Cliente"), items, distributors[0], pricing, shipping, insurance)} className="col-span-2 px-3 py-2 rounded-xl bg-slate-900 text-white">Imprimir / Guardar PDF</button>
+                <button onClick={()=>onDownloadCSV(nextFolio, (customer?.name||"Cliente"), items, distributors[0], pricing)} className="col-span-2 px-3 py-2 rounded-xl border border-slate-300">Descargar CSV</button>
+              </div>
+            </Section>
+
+            <Section title="Compartir (link público)">
+              <div className="flex flex-col md:flex-row items-end gap-3">
+                <button onClick={()=>{ 
+                  const quote = { id: nextFolio, version: 1, status: "Aprobada", distributorId: distributors[0].id, customerId, shipping, insurance, items, totals: pricing, createdAt: new Date().toISOString(), requiresApproval: pricing.requiresApproval };
+                  const { url } = savePublicQuote(quote);
+                  (async()=>{ try{ await navigator.clipboard.writeText(url); alert("Link público copiado:\n"+url); } catch(_){ alert("Tu link público:\n"+url); } })();
+                }} className="px-3 py-2 rounded-xl text-sm text-slate-900" style={{background:'var(--brand)'}}>Generar link</button>
+              </div>
+            </Section>
+          </div>
+        </div>);
+      }
+
+      function App(){
+        const [activeTab, setActiveTab] = useState("dashboard");
+        const [folioCounter, setFolioCounter] = useState(1);
+        const [publicId, setPublicId] = useState("");
+
+        useEffect(()=>{ const readHash=()=>{ const m=window.location.hash.match(/#public=([^&]+)/); setPublicId(m ? decodeURIComponent(m[1]) : ""); }; readHash(); window.addEventListener("hashchange", readHash); return ()=>window.removeEventListener("hashchange", readHash); },[]);
+        const nextFolio = () => formatFolio(folioCounter);
+
+        if (publicId) return <PublicQuoteView shareId={publicId} />;
+
+        return (<div className="min-h-screen bg-slate-100 p-6 print:p-0">
+          <header className="max-w-6xl mx-auto flex items-center justify-between mb-6 print:hidden">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg brand-chip"><span className="font-semibold">DTM</span></div>
+              <div><h1 className="text-2xl font-bold">Portal de Cotizaciones</h1><p className="text-slate-600 text-sm">IVA 16% · Aprobación si desc. &gt; 20% · Folio COT0001</p></div>
+            </div>
+            <nav className="bg-white border border-slate-200 rounded-xl p-1">
+              <button onClick={()=>setActiveTab("dashboard")} className={`px-3 py-2 rounded-lg text-sm ${activeTab==="dashboard"?"bg-slate-900 text-white":"text-slate-700"}`}>Dashboard</button>
+              <button onClick={()=>setActiveTab("new")} className={`px-3 py-2 rounded-lg text-sm ${activeTab==="new"?"bg-slate-900 text-white":"text-slate-700"}`}>Nueva cotización</button>
+            </nav>
+          </header>
+          <div className="max-w-6xl mx-auto">
+            {activeTab==="new" ? <NewQuoteForm distributor={{}} onSave={()=>setFolioCounter(n=>n+1)} nextFolio={nextFolio()} onPrint={(folio, customerName, items, distributor, pricing, shipping, insurance)=>{
+              const html = buildBrandedQuoteHTML({ folio, customerName, distributor: distributors[0], items, totals: pricing, shipping, insurance }); printHTML(html);
+            }} onDownloadCSV={(folio, customerName, items, distributor, pricing)=>{
+              const header = ["Folio","Cliente","SKU","Producto","Cantidad","PrecioLista","DescPct","PrecioNeto","Importe"].join(",");
+              const rows = items.map(row=>{ const p=getProduct(row.productId); const { price }=findPBPrice(distributors[0],row.productId); const unit=price||p?.list_price_mxn||0; const disc=clamp(row.discountPct||0,0,100); const qty=Math.max(1,row.qty||1); const netUnit=unit*(1-disc/100); const importe=netUnit*qty; return [folio,customerName,p?.sku,p?.name,qty,numberMX(unit),disc,numberMX(netUnit),numberMX(importe)].join(","); });
+              const totals = [folio, customerName, "","","","","","Total c/IVA", numberMX(pricing.total)].join(",");
+              const csv = [header, ...rows, totals].join("\r\n");
+              const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`${folio}-${customerName}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(()=>URL.revokeObjectURL(url),500);
+            }} /> : (
+              <Section title="Bienvenido a DTM">
+                <p className="text-sm text-slate-600">Usa “Nueva cotización” para empezar. El branding y textos legales ya están configurados.</p>
+              </Section>
+            )}
+          </div>
+          <style>{`@media print { header, nav { display: none !important } body { background: white } section { box-shadow: none !important; border: none !important } .bg-slate-100 { background: white } .rounded-2xl { border-radius: 0 } }`}</style>
+        </div>);
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
